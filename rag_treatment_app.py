@@ -233,6 +233,123 @@ class RAGTreatmentSearchApp:
                 out.append(ss)
         return sorted(out)
 
+    def get_all_concerns_for_region(self, region: str) -> List[str]:
+        """
+        Get all unique concerns from database for a given region.
+        Extracts concerns from the 'concerns' column.
+        """
+        r = _norm(region)
+        filtered_df = self.df[self.df["_region_norm"].eq(r)]
+        
+        all_concerns = set()
+        for _, row in filtered_df.iterrows():
+            concerns_text = _first_present(row, ["concerns", "aesthetic_concerns", "Aesthetic Concerns"])
+            if concerns_text and concerns_text != "Not found in database.":
+                # Split by common separators: comma, semicolon, pipe, newline
+                items = concerns_text.replace(";", ",").replace("|", ",").replace("\n", ",").split(",")
+                for item in items:
+                    cleaned = item.strip()
+                    if cleaned and len(cleaned) > 2:  # Filter out very short items
+                        all_concerns.add(cleaned)
+        
+        return sorted(list(all_concerns))
+
+    def get_region_from_subzone(self, sub_zone: str) -> str:
+        """
+        Find the region that contains the given sub-zone.
+        Returns empty string if not found.
+        """
+        sz = _norm(sub_zone)
+        matches = self.df[self.df["_subzone_norm"].eq(sz) | self.df["_subzone_norm"].str.contains(sz, na=False)]
+        
+        if len(matches) > 0:
+            region = matches.iloc[0]["Region"]
+            return str(region).strip()
+        
+        return ""
+
+    def search_by_concerns(
+        self,
+        region: str,
+        sub_zone: str,
+        type_choice: str,
+        concerns: List[str],
+        retrieval_k: int = 12,
+        final_k: int = 5,
+    ) -> dict:
+        """
+        Search for procedures based on array of concerns.
+        Returns only procedure names (not full details).
+        
+        Args:
+            region: Selected region
+            sub_zone: Selected sub-zone
+            type_choice: Treatment preference (Surgical/Non-Surgical/Both)
+            concerns: List of concern strings
+            retrieval_k: Number of candidates to retrieve
+            final_k: Number of final recommendations
+            
+        Returns:
+            dict with:
+            - mismatch: bool
+            - notice: str (if mismatch)
+            - recommended_procedures: List[str] (procedure names only)
+            - suggested_region_subzones: List[dict] (if mismatch)
+        """
+        region = (region or "").strip()
+        sub_zone = (sub_zone or "").strip()
+        
+        if not region or not sub_zone:
+            return {
+                "mismatch": False,
+                "notice": "Region and sub-zone are required",
+                "recommended_procedures": [],
+                "suggested_region_subzones": []
+            }
+        
+        if not concerns:
+            return {
+                "mismatch": False,
+                "notice": "At least one concern is required",
+                "recommended_procedures": [],
+                "suggested_region_subzones": []
+            }
+        
+        # Combine concerns into issue text for semantic search
+        issue_text = ", ".join(concerns)
+        
+        # Use the existing recommend method
+        result = self.recommend(
+            region=region,
+            sub_zone=sub_zone,
+            type_choice=type_choice,
+            issue_text=issue_text,
+            retrieval_k=retrieval_k,
+            final_k=final_k,
+        )
+        
+        # Transform result to return only procedure names
+        if result["status"] == "mismatch":
+            return {
+                "mismatch": True,
+                "notice": "Your selected sub-zone does not match your concerns.",
+                "recommended_procedures": [],
+                "suggested_region_subzones": result.get("suggested_region_subzones", [])
+            }
+        
+        # Extract only procedure names from recommended_procedures
+        procedure_names = []
+        for proc in result.get("recommended_procedures", []):
+            if isinstance(proc, dict) and "procedure_name" in proc:
+                procedure_names.append(proc["procedure_name"])
+        
+        return {
+            "mismatch": False,
+            "notice": "",
+            "recommended_procedures": procedure_names,
+            "suggested_region_subzones": []
+        }
+
     # ---------------- Embeddings ----------------
 
     def _row_to_text(self, row: pd.Series) -> str:
