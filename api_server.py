@@ -64,6 +64,9 @@ BODY_SUB_ZONES = [
 ]
 
 ALL_SUB_ZONES = FACE_SUB_ZONES + BODY_SUB_ZONES
+# Case-insensitive allowlist
+ALLOWED_SUBZONES = {z.strip().lower(): z for z in ALL_SUB_ZONES}
+ALLOWED_SUBZONES_LIST = sorted(ALLOWED_SUBZONES.keys())
 
 
 # ---------------------------- schemas ----------------------------
@@ -121,10 +124,10 @@ def get_common_concerns(req: CommonConcernsRequest):
         raise HTTPException(status_code=400, detail="sub_zone is required")
     
     # Validate sub-zone
-    if sub_zone not in ALL_SUB_ZONES:
+    if sub_zone not in ALLOWED_SUBZONES:
         raise HTTPException(
             status_code=400, 
-            detail=f"Invalid sub_zone. Must be one of: {', '.join(ALL_SUB_ZONES)}"
+            detail=f"Invalid sub_zone. Must be one of: {', '.join(ALLOWED_SUBZONES_LIST)}"
         )
     
     # Get common concerns for this sub-zone from database
@@ -171,10 +174,10 @@ def search_procedures(req: SearchRequest):
         raise HTTPException(status_code=400, detail="At least one concern is required")
     
     # Validate sub-zone
-    if sub_zone not in ALL_SUB_ZONES:
+    if sub_zone not in ALLOWED_SUBZONES:
         raise HTTPException(
             status_code=400, 
-            detail=f"Invalid sub_zone. Must be one of: {', '.join(ALL_SUB_ZONES)}"
+            detail=f"Invalid sub_zone. Must be one of: {', '.join(ALLOWED_SUBZONES_LIST)}"
         )
     
     # Get region from sub-zone
